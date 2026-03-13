@@ -465,38 +465,24 @@ This figure is generated from the same inputs used for evaluation (`ground_truth
 
 ## 💭 Discussion
 
-### Strengths
-
-1. **Good ATE accuracy**: RMSE of 2.007 m is well below the 3 m threshold for outdoor navigation, indicating reliable global trajectory shape after Sim(3) alignment.
-
-2. **Stable scale recovery**: Scale correction factor of 1.097 (9.7% error) is within acceptable range for monocular SLAM on challenging outdoor scenes.
-
-3. **End-to-end pipeline**: The system produces a usable TUM trajectory and can be evaluated reproducibly with standard tooling.
-
-### Limitations
-
-1. **Low completeness (27.2%)**: The Docker image (`liangyu99/orbslam3_ros1:latest`) crashes with a segmentation fault on shutdown, preventing `CameraTrajectory.txt` from being saved. Only keyframes are available, severely reducing completeness.
-
-2. **High RPE**: Tracking loss events cause large instantaneous errors in RPE computation. 15 major tracking loss events were observed during the run.
-
-3. **No loop closure**: Pure monocular VO accumulates drift over the 1.9 km trajectory without loop closure or relocalization.
-
-### Error Sources
-
-1. **Fast UAV motion**: Aggressive maneuvers cause motion blur and large inter-frame displacement.
-
-2. **Feature Extraction**: Default ORB parameters (1500 features) may be insufficient for high-resolution 2448×2048 images.
-
-3. **Scale ambiguity**: Monocular VO requires Sim(3) alignment to recover metric scale; any error in scale estimation affects all downstream metrics.
-
+### The final results show that ORB-SLAM3 in monocular mode can recover the overall shape of the UAV trajectory with reasonable global consistency after Sim(3) alignment. An ATE RMSE of 2.030041 m and a scale correction factor of 1.0982 indicate that the estimated trajectory is geometrically close to the RTK ground truth over the matched segment. The aligned trajectory plot further suggests that the estimated path follows the ground-truth shape well over long portions of the route, while the remaining error is concentrated in several local regions rather than being uniformly large across the whole sequence.
+However, the evaluation also shows that good global alignment does not necessarily imply strong tracking robustness. The reported RPE translation drift of 2.7743 m/m, RPE rotation drift of 117.6234 deg/100 m, and completeness of only 27.92% indicate that the system was able to track only a limited portion of the full flight sequence reliably. The final evaluation also reports that only 249 of 546 estimated poses could be aligned and that the run suffered from frequent tracking interruptions, which explains the local error spikes visible along the trajectory.
+These limitations are consistent with the challenges of monocular VO on UAV aerial imagery. Fast motion can introduce motion blur and large inter-frame displacement, while repeated building textures, weak parallax, and viewpoint changes reduce feature distinctiveness and make stable tracking harder. In addition, this experiment relied on KeyFrameTrajectory.txt instead of CameraTrajectory.txt, which lowers completeness and can make drift-related metrics less representative of the full frame-by-frame motion.
+Overall, the system demonstrates good absolute accuracy on successfully tracked segments, but limited robustness over the full 6.5-minute flight. Therefore, the main bottleneck of the current implementation is not the aligned trajectory shape itself, but the ability to maintain continuous and stable tracking throughout the sequence.
 ---
 
 ## 🎯 Conclusions
-
+This project successfully implemented an end-to-end monocular visual odometry pipeline using ORB-SLAM3 on the HKisland_GNSS03 UAV dataset and evaluated the output against RTK ground truth in TUM format. The final results show that the system achieved an ATE RMSE of 2.030041 m after Sim(3) alignment, with a scale correction factor of 1.0982, demonstrating that the estimated trajectory preserves the overall geometric structure of the flight path reasonably well.
+At the same time, the project also reveals the main weakness of monocular VO in this setting: robustness. Although the global alignment accuracy is good, the low completeness (27.92%) and relatively high drift metrics indicate that the system does not yet maintain reliable tracking over the full trajectory. This means the current solution is suitable for coarse trajectory reconstruction and localization on tracked segments, but it is not yet robust enough for dependable full-sequence UAV navigation in challenging aerial scenes.
+A further important conclusion is that ATE alone is not sufficient to judge monocular VO performance. In this assignment, the ATE improved compared with the previous baseline, but tracking loss and limited coverage remained major issues. For monocular systems, ATE, drift rates, and completeness should therefore be interpreted together in order to provide a fair assessment of both accuracy and robustness.
 
 
 ### Recommendations for Improvement
-
+1. Resolve runtime stability and export the full camera trajectory.The most immediate improvement is to fix the segmentation fault that prevents CameraTrajectory.txt from being saved. Using the full camera trajectory instead of keyframes only would significantly improve completeness and provide a fairer evaluation of the system over the whole sequence.
+2. Tune ORB extraction parameters for aerial imagery. The current setting uses 1500 features per frame, which may be insufficient for high-resolution UAV images. Increasing the number of ORB features and lowering FAST thresholds could improve feature survival in low-texture or motion-blurred regions and reduce tracking failure.
+3. Evaluate continuous tracking segments separately.Since large tracking loss periods strongly affect drift-related metrics, a more informative evaluation would report both the full-sequence results and the results on continuous tracked segments. This would separate front-end robustness issues from the accuracy of the estimator when tracking is stable.
+4. Incorporate additional sensing if available.A visual-inertial or stereo configuration would help reduce monocular scale ambiguity and improve robustness during rapid motion, weak-parallax flight, or temporary visual degradation. This is especially relevant for UAV trajectories with aggressive maneuvers and long travel distance.
+5. Apply dataset-specific optimization and preprocessing.Further gains may come from verifying calibration consistency, checking timestamp association carefully, and applying image preprocessing such as contrast enhancement or suitable resizing to improve feature quality and runtime stability on large 2448×2048 images. The current results suggest that the dataset is challenging enough that default settings are not fully adequate.
 
 
 ---
