@@ -450,7 +450,7 @@ Consider running on continuous tracking segments only for fair comparison.
 
 ### Trajectory Comparison
 
-![Trajectory Evaluation]()
+![Trajectory Evaluation](trajectory_evaluation.png)
 
 This figure is generated from the same inputs used for evaluation (`ground_truth.txt` and `KeyFrameTrajectory.txt`) and includes:
 
