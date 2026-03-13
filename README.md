@@ -493,23 +493,11 @@ This figure is generated from the same inputs used for evaluation (`ground_truth
 
 ## 🎯 Conclusions
 
-This assignment demonstrates monocular Visual Odometry using ORB-SLAM3 on the MARS-LVIG HKisland_GNSS03 dataset. Key findings:
 
-1. ✅ **System Operation**: ORB-SLAM3 successfully processes 3,833 UAV images over a 1.9 km trajectory
-2. ✅ **ATE RMSE of 2.007 m** — good global accuracy after Sim(3) alignment, below the 3 m outdoor threshold
-3. ✅ **Scale recovery reliable** at 9.7% error
-4. ⚠️ **Completeness limited to 27.2%** due to Docker image segmentation fault preventing `CameraTrajectory.txt` from saving
-5. ⚠️ **RPE affected** by tracking loss periods and keyframe-only output
 
 ### Recommendations for Improvement
 
-| Priority | Action | Expected Improvement |
-|----------|--------|---------------------|
-| High | Fix Docker shutdown to save `CameraTrajectory.txt` | Completeness from 27% → ~87% |
-| High | Increase `nFeatures` to 2000–2500 | 20–30% ATE reduction |
-| High | Lower FAST thresholds (15/5) | Better tracking continuity |
-| Medium | Verify camera calibration | 15–25% overall improvement |
-| Low | Enable IMU fusion (VIO mode) | 50–70% accuracy improvement |
+
 
 ---
 
@@ -527,70 +515,5 @@ This assignment demonstrates monocular Visual Odometry using ORB-SLAM3 on the MA
 
 ---
 
-## 📎 Appendix
-
-### A. Repository Structure
-
-```
-Assignment2/
-├── README.md                              ← This report
-├── requirements.txt                       ← Python dependencies
-├── figures/
-│   └── trajectory_evaluation.png         ← 4-panel trajectory evaluation figure
-├── output/
-│   ├── KeyFrameTrajectory.txt             ← ORB-SLAM3 estimated trajectory (TUM format)
-│   └── ground_truth.txt                  ← RTK ground truth (TUM format)
-├── scripts/
-│   └── generate_report_figures.py        ← Figure generation script
-├── docs/
-│   └── camera_config.yaml                ← Camera calibration reference
-└── leaderboard/
-    ├── README.md
-    ├── LEADERBOARD_SUBMISSION_GUIDE.md
-    └── submission_template.json
-```
-
-### B. Native evo Commands
-
-```bash
-# ATE (Sim(3) alignment + scale correction)
-evo_ape tum ground_truth.txt KeyFrameTrajectory.txt \
-  --align --correct_scale \
-  --t_max_diff 0.1 -va
-
-# RPE translation (distance-based, delta = 10 m)
-evo_rpe tum ground_truth.txt KeyFrameTrajectory.txt \
-  --align --correct_scale \
-  --t_max_diff 0.1 \
-  --delta 10 --delta_unit m \
-  --pose_relation trans_part -va
-
-# RPE rotation angle (degrees, distance-based, delta = 10 m)
-evo_rpe tum ground_truth.txt KeyFrameTrajectory.txt \
-  --align --correct_scale \
-  --t_max_diff 0.1 \
-  --delta 10 --delta_unit m \
-  --pose_relation angle_deg -va
-```
-
-### C. Output Trajectory Format (TUM)
-
-```
-# timestamp x y z qx qy qz qw
-1698132964.499888 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 1.0000000
-1698132964.599976 -0.0198950 0.0163751 -0.0965251 -0.0048082 0.0122335 0.0013237 0.9999127
-```
-
----
-
-<div align="center">
-
-**AAE5303 - Robust Control Technology in Low-Altitude Aerial Vehicle**
-
-*Department of Aeronautical and Aviation Engineering*
-
-*The Hong Kong Polytechnic University*
-
-Mar 2026
 
 </div>
