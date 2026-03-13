@@ -1,1 +1,152 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from pathlib import Path
 
+# ========== 配置 ==========
+GT_FILE = "ground_truth.txt"          # 真值
+EST_FILE = "KeyFrameTrajectory.txt"   # 估计轨迹（可改成 CameraTrajectory.txt）
+OUT_FILE = "trajectory_evaluation.png"
+TIME_TOL = 0.02                       # 时间对齐容差（秒）
+
+# ========== 工具函数 ==========
+
+def load_tum(path):
+    """读取 TUM 轨迹文件，返回按时间排序的 (t, xyz, quat)。"""
+    t_list, p_list, q_list = [], [], []
+    with open(path, "r") as f:
+        for line in f:
+            if line.strip() == "" or line.startswith("#"):
+                continue
+            data = list(map(float, line.split()))
+            if len(data) != 8:
+                continue
+            t, tx, ty, tz, qx, qy, qz, qw = data
+            t_list.append(t)
+            p_list.append([tx, ty, tz])
+            q_list.append([qx, qy, qz, qw])
+    t = np.asarray(t_list)
+    order = np.argsort(t)
+    t = t[order]
+    p = np.asarray(p_list)[order]
+    q = np.asarray(q_list)[order]
+    return t, p, q
+
+def associate_by_time(t_ref, p_ref, t_est, p_est, max_diff):
+    """根据时间戳最近邻对齐两条轨迹，只返回匹配上的部分。"""
+    idx_ref, idx_est = [], []
+    j = 0
+    for i in range(len(t_ref)):
+        while j + 1 < len(t_est) and abs(t_est[j + 1] - t_ref[i]) < abs(t_est[j] - t_ref[i]):
+            j += 1
+        if abs(t_est[j] - t_ref[i]) <= max_diff:
+            idx_ref.append(i)
+            idx_est.append(j)
+    return p_ref[idx_ref], p_est[idx_est]
+
+def umeyama_alignment(src, dst, with_scale=True):
+    """
+    Umeyama 算法：求 src → dst 的 Sim(3) 变换.
+    src, dst: (N,3)
+    返回 (scale s, 旋转矩阵 R(3x3), 平移向量 t(3,))
+    """
+    assert src.shape == dst.shape
+    n = src.shape[0]
+
+    mu_src = src.mean(axis=0)
+    mu_dst = dst.mean(axis=0)
+
+    src_centered = src - mu_src
+    dst_centered = dst - mu_dst
+
+    cov = (dst_centered.T @ src_centered) / n
+    U, D, Vt = np.linalg.svd(cov)
+
+    S = np.eye(3)
+    if np.linalg.det(U) * np.linalg.det(Vt) < 0:
+        S[2, 2] = -1.0
+
+    R = U @ S @ Vt
+
+    if with_scale:
+        var_src = (src_centered ** 2).sum() / n
+        s = np.trace(np.diag(D) @ S) / var_src
+    else:
+        s = 1.0
+
+    t = mu_dst - s * R @ mu_src
+    return s, R, t
+
+# ========== 主流程 ==========
+
+def main():
+    gt_path = Path(GT_FILE)
+    est_path = Path(EST_FILE)
+    assert gt_path.exists(), f"{gt_path} not found"
+    assert est_path.exists(), f"{est_path} not found"
+
+    # 1. 读取轨迹
+    t_gt, p_gt, _ = load_tum(gt_path)
+    t_est, p_est, _ = load_tum(est_path)
+
+    # 2. 按时间戳做关联，只保留能对上的部分
+    p_gt_sync, p_est_sync = associate_by_time(t_gt, p_gt, t_est, p_est, TIME_TOL)
+    assert len(p_gt_sync) > 0, "No matched poses after time association."
+
+    # 3. 计算对齐 (Sim(3))
+    s, R, t = umeyama_alignment(p_est_sync, p_gt_sync, with_scale=True)
+    p_est_aligned = (s * (R @ p_est_sync.T)).T + t
+
+    # 4. ATE 误差
+    errors = np.linalg.norm(p_est_aligned - p_gt_sync, axis=1)
+    mean_ate = errors.mean()
+    median_ate = np.median(errors)
+
+    # ========== 画图 ==========
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    fig.suptitle("轨迹比较", fontsize=16)
+
+    # (1) 未对齐 2D 轨迹 (XY)
+    ax = axes[0, 0]
+    ax.plot(p_gt_sync[:, 0], p_gt_sync[:, 1], "r-", label="Ground Truth")
+    ax.plot(p_est_sync[:, 0], p_est_sync[:, 1], "g-", label="VO (Unaligned)")
+    ax.set_xlabel("X [m]")
+    ax.set_ylabel("Y [m]")
+    ax.set_title("2D Trajectory - Before Alignment")
+    ax.legend()
+    ax.axis("equal")
+
+    # (2) 对齐后 2D 轨迹 (XY)
+    ax = axes[0, 1]
+    ax.plot(p_gt_sync[:, 0], p_gt_sync[:, 1], "k-", label="Ground Truth")
+    ax.plot(p_est_aligned[:, 0], p_est_aligned[:, 1], "b-", label="VO (Aligned)")
+    ax.set_xlabel("X [m]")
+    ax.set_ylabel("Y [m]")
+    ax.set_title("2D Trajectory - After Sim(3) Alignment")
+    ax.legend()
+    ax.axis("equal")
+
+    # (3) ATE 直方图
+    ax = axes[1, 0]
+    ax.hist(errors, bins=40, alpha=0.8)
+    ax.axvline(mean_ate, color="r", linestyle="--", label=f"Mean: {mean_ate:.2f} m")
+    ax.axvline(median_ate, color="orange", linestyle="--", label=f"Median: {median_ate:.2f} m")
+    ax.set_xlabel("ATE [m]")
+    ax.set_ylabel("Frequency")
+    ax.set_title("Absolute Trajectory Error Distribution")
+    ax.legend()
+
+    # (4) ATE 随轨迹变化
+    ax = axes[1, 1]
+    ax.plot(errors, color="teal")
+    ax.fill_between(np.arange(len(errors)), errors, alpha=0.3, color="teal")
+    ax.set_xlabel("Matched Pose Index")
+    ax.set_ylabel("ATE [m]")
+    ax.set_title("ATE Error Along Trajectory")
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.savefig(OUT_FILE, dpi=200)
+    print(f"Saved figure to {OUT_FILE}")
+    plt.close(fig)
+
+if __name__ == "__main__":
+    main()
